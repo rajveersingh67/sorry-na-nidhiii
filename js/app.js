@@ -27,6 +27,21 @@
     }
   }
 
+  function celebrateConfetti(amount = 36) {
+    const layer = $('#heart-layer');
+    const colors = ['💗', '🎀', '✨', '🌸', '💕'];
+    for (let i = 0; i < amount; i++) {
+      const bit = document.createElement('span');
+      bit.className = 'confetti-piece';
+      bit.textContent = colors[Math.floor(Math.random() * colors.length)];
+      bit.style.left = `${Math.random() * 100}%`;
+      bit.style.setProperty('--drift', `${Math.round(Math.random() * 140 - 70)}px`);
+      bit.style.setProperty('--duration', `${2 + Math.random() * 2}s`);
+      layer.appendChild(bit);
+      setTimeout(() => bit.remove(), 4300);
+    }
+  }
+
   // Navigation and page progress.
   const menu = $('#main-nav');
   $('#menu-toggle').addEventListener('click', (event) => {
@@ -84,7 +99,7 @@
   let repetitions = 0;
   let celebrated = false;
   const repMessages = [
-    'Nidhi please maaf kar do na 😭',
+    'nidhi ji, galti ho gayi 😭🎀',
     'Kaan pakad liye, ab toh maan jao 🥹',
     'Ek aur uthak-baithak sirf tumhare liye 😂❤️',
     'Meri taangein bhi sorry bol rahi hain 😭',
@@ -99,26 +114,38 @@
     $('#rep-fill').style.width = `${repetitions}%`;
     $('.challenge-section .progress-track').setAttribute('aria-valuenow', String(repetitions));
     if (repetitions === 100) {
-      $('#rep-message').textContent = '100 COMPLETE! PLEASE FORGIVE ME 💗🎉 (only if and when you feel ready)';
+      $('#rep-message').textContent = '100 UTHAK-BAITHAK DONE. PLEASE ACCEPT THIS DIGITAL SORRY 🧸💗';
       if (!celebrated) {
         celebrated = true;
         releaseHearts(55);
+        celebrateConfetti(45);
         showToast('Challenge complete! A tiny celebration for you 💗');
       }
     } else if (repetitions === 0) {
       $('#rep-message').textContent = 'Ready when you are… meri taangein thodi nervous hain 😭';
     } else {
       $('#rep-message').textContent = repetitions === 50
-        ? '50 ho gayi! Meri taangein bhi sorry bol rahi hain 😂'
+        ? '50 COMPLETE! meri taangein bhi sorry bol rahi hain 😂'
+        : repetitions === 25
+          ? '25 ho gayi… abhi bhi maafi pending hai kya? 😭'
         : repMessages[(repetitions - 1) % repMessages.length];
     }
     const art = $('.challenge-art');
     art.classList.add('squat');
     setTimeout(() => art.classList.remove('squat'), 260);
   }
-  $('#add-rep').addEventListener('click', () => {
+  let repClickLocked = false;
+  $('#add-rep').addEventListener('click', (event) => {
+    if (repClickLocked) return;
+    repClickLocked = true;
     if (repetitions < 100) repetitions++;
     renderReps();
+    const button = event.currentTarget;
+    button.disabled = true;
+    setTimeout(() => {
+      repClickLocked = false;
+      button.disabled = false;
+    }, 180);
   });
   $('#minus-rep').addEventListener('click', () => {
     if (repetitions > 0) repetitions--;
@@ -151,6 +178,22 @@
   let catchScore = 0;
   let catchSeconds = 30;
   let catchRunning = false;
+  let catchSoundEnabled = true;
+  let catchAudioContext = null;
+  function playCatchSound() {
+    if (!catchSoundEnabled || !catchAudioContext) return;
+    const oscillator = catchAudioContext.createOscillator();
+    const gain = catchAudioContext.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(660, catchAudioContext.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(880, catchAudioContext.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.06, catchAudioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, catchAudioContext.currentTime + 0.12);
+    oscillator.connect(gain);
+    gain.connect(catchAudioContext.destination);
+    oscillator.start();
+    oscillator.stop(catchAudioContext.currentTime + 0.12);
+  }
   function finishCatch(message) {
     if (!catchRunning) return;
     catchRunning = false;
@@ -180,6 +223,7 @@
       if (!catchRunning) return;
       catchScore++;
       $('#catch-score').textContent = catchScore;
+      playCatchSound();
       heart.remove();
       if (catchScore >= 10) finishCatch('Lovely catching! You collected 10 hearts! 💗');
     });
@@ -187,6 +231,8 @@
     setTimeout(() => heart.remove(), 3700);
   }
   $('#catch-start').addEventListener('click', () => {
+    if (!catchAudioContext && window.AudioContext) catchAudioContext = new AudioContext();
+    catchAudioContext?.resume?.();
     clearInterval(catchTimerId);
     clearInterval(heartSpawnId);
     $$('.falling-heart', $('#catch-board')).forEach((heart) => heart.remove());
@@ -207,6 +253,11 @@
       if (catchSeconds <= 0) finishCatch(catchScore >= 10 ? 'Lovely! You reached the target!' : `You caught ${catchScore} hearts!`);
     }, 1000);
   });
+  $('#catch-mute').addEventListener('click', (event) => {
+    catchSoundEnabled = !catchSoundEnabled;
+    event.currentTarget.textContent = catchSoundEnabled ? '🔊 sound on' : '🔇 sound off';
+    event.currentTarget.setAttribute('aria-pressed', String(!catchSoundEnabled));
+  });
 
   const decoys = ['🌷', '🧸', '🎀', '✨', '🌼', '🍓', '⭐', '🍬'];
   let foundCount = 0;
@@ -225,6 +276,7 @@
     $('#find-score').textContent = '0';
     $('#find-moves').textContent = '0';
     $('#find-result').textContent = '';
+    $('#find-hint-text').textContent = '';
     const items = shuffle(['💗', '💗', '💗', '💗', ...decoys]);
     const grid = $('#find-grid');
     grid.replaceChildren();
@@ -258,6 +310,16 @@
     });
   }
   $('#find-reset').addEventListener('click', resetFindGame);
+  $('#find-hint').addEventListener('click', () => {
+    const nextHeart = $$('.find-card', $('#find-grid')).find((card) => card.dataset.item === '💗' && !card.disabled);
+    if (!nextHeart) {
+      $('#find-hint-text').textContent = 'You’ve already found all the hearts! 💗';
+      return;
+    }
+    nextHeart.classList.add('hinted');
+    $('#find-hint-text').textContent = 'A heart is glowing for a moment… ✨';
+    setTimeout(() => nextHeart.classList.remove('hinted'), 1300);
+  });
   resetFindGame();
 
   const answer = ['heart', 'star', 'flower'];
@@ -270,6 +332,7 @@
     renderSequence();
     $('#unlock-result').textContent = '';
     $('#secret-reveal').hidden = true;
+    $('#secret-reveal').classList.remove('unlocked');
   }
   $$('.symbol-pad button').forEach((button) => button.addEventListener('click', () => {
     if ($('#secret-reveal').hidden === false) return;
@@ -285,33 +348,24 @@
     if (chosenSymbols.length === answer.length) {
       $('#unlock-result').textContent = 'Unlocked with care ✨';
       $('#secret-reveal').hidden = false;
+      $('#secret-reveal').classList.add('unlocked');
       releaseHearts(22);
+      celebrateConfetti(20);
     }
   }));
   $('#unlock-reset').addEventListener('click', resetUnlock);
 
-  // Local audio file player: never autoplay, never upload.
+  // Bundled song player: playback begins only after the visitor presses Play.
   const audio = $('#audio-player');
-  let currentObjectUrl = null;
+  audio.volume = 0.8;
+  $('#play-audio').disabled = false;
+  $('#audio-progress').disabled = false;
   function formatTime(seconds) {
     if (!Number.isFinite(seconds)) return '0:00';
     const min = Math.floor(seconds / 60);
     const sec = Math.floor(seconds % 60).toString().padStart(2, '0');
     return `${min}:${sec}`;
   }
-  $('#audio-file').addEventListener('change', (event) => {
-    const file = event.currentTarget.files?.[0];
-    if (!file) return;
-    if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
-    currentObjectUrl = URL.createObjectURL(file);
-    audio.src = currentObjectUrl;
-    audio.load();
-    $('#track-title').textContent = file.name.replace(/\.[^.]+$/, '');
-    $('#track-state').textContent = 'ready when you are';
-    $('#music-note').textContent = 'Song loaded locally. Press play whenever you want.';
-    $('#play-audio').disabled = false;
-    $('#audio-progress').disabled = false;
-  });
   $('#play-audio').addEventListener('click', async () => {
     if (!audio.src) return;
     if (audio.paused) {
@@ -346,13 +400,18 @@
     $('#audio-progress').value = audio.duration ? String(audio.currentTime / audio.duration * 100) : '0';
   });
   audio.addEventListener('ended', () => { $('#track-state').textContent = 'that was lovely'; });
+  audio.addEventListener('error', () => {
+    $('#track-state').textContent = 'The song could not be loaded';
+    $('#music-note').textContent = 'Please check that the bundled MP3 is present and try again.';
+    $('#play-audio').disabled = true;
+    showToast('The supplied song could not be loaded.');
+  });
   $('#audio-progress').addEventListener('input', (event) => {
     if (audio.duration) audio.currentTime = Number(event.currentTarget.value) / 100 * audio.duration;
   });
-  $('#mute-audio').addEventListener('click', (event) => {
-    audio.muted = !audio.muted;
-    event.currentTarget.textContent = audio.muted ? '♫̸' : '♫';
-    event.currentTarget.setAttribute('aria-label', audio.muted ? 'Unmute song' : 'Mute song');
+  $('#audio-volume').addEventListener('input', (event) => {
+    audio.volume = Number(event.currentTarget.value);
+    audio.muted = audio.volume === 0;
   });
 
   // Sticker shelf and surprises.
@@ -370,6 +429,12 @@
   $('#photo-reveal').addEventListener('click', (event) => {
     const revealed = event.currentTarget.classList.toggle('revealed');
     event.currentTarget.setAttribute('aria-expanded', String(revealed));
+  });
+  $('#secret-heart').addEventListener('click', () => {
+    const note = $('#secret-hidden-note');
+    note.hidden = !note.hidden;
+    $('#secret-heart').setAttribute('aria-expanded', String(!note.hidden));
+    if (!note.hidden) releaseHearts(12);
   });
   $('#virtual-hug').addEventListener('click', () => {
     releaseHearts(20);
@@ -390,20 +455,32 @@
 
   // Responsive, keyboard-friendly photo viewer.
   const lightbox = $('#lightbox');
+  const galleryCards = $$('.scrap-card');
+  let lightboxIndex = 0;
+  function showGalleryImage(index) {
+    lightboxIndex = (index + galleryCards.length) % galleryCards.length;
+    const card = galleryCards[lightboxIndex];
+    $('#lightbox-img').src = card.dataset.img;
+    $('#lightbox-img').alt = $('img', card).alt;
+    $('#lightbox-caption').textContent = card.dataset.caption;
+  }
   function closeLightbox() {
     lightbox.classList.remove('open');
     lightbox.setAttribute('aria-hidden', 'true');
   }
-  $$('.scrap-card').forEach((card) => card.addEventListener('click', () => {
-    const image = $('#lightbox-img');
-    image.src = card.dataset.img;
-    image.alt = $('img', card).alt;
-    $('#lightbox-caption').textContent = card.dataset.caption;
+  galleryCards.forEach((card, index) => card.addEventListener('click', () => {
+    showGalleryImage(index);
     lightbox.classList.add('open');
     lightbox.setAttribute('aria-hidden', 'false');
     $('#lightbox-close').focus();
   }));
   $('#lightbox-close').addEventListener('click', closeLightbox);
+  $('#lightbox-prev').addEventListener('click', () => showGalleryImage(lightboxIndex - 1));
+  $('#lightbox-next').addEventListener('click', () => showGalleryImage(lightboxIndex + 1));
   lightbox.addEventListener('click', (event) => { if (event.target === lightbox) closeLightbox(); });
-  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeLightbox(); });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeLightbox();
+    if (lightbox.classList.contains('open') && event.key === 'ArrowLeft') showGalleryImage(lightboxIndex - 1);
+    if (lightbox.classList.contains('open') && event.key === 'ArrowRight') showGalleryImage(lightboxIndex + 1);
+  });
 })();
